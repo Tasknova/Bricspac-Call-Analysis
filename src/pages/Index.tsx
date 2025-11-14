@@ -46,9 +46,23 @@ const Index = () => {
       return;
     }
 
+    // Don't override the view if user is on a login page or auth-related page
+    const loginPages = ['admin-login', 'manager-login', 'employee-login', 'auth', 'login-options'];
+    if (loginPages.includes(currentView)) {
+      console.log('User is on login page, not overriding view');
+      return;
+    }
+
     if (!user) {
       console.log('No user, going to landing');
       setCurrentView('landing');
+      return;
+    }
+
+    // If we're already on dashboard and have a valid userRole, don't override it
+    // This prevents redirecting away from dashboard after successful login
+    if (currentView === 'dashboard' && userRole) {
+      console.log('Already on dashboard with valid role, staying on dashboard');
       return;
     }
 
@@ -59,9 +73,10 @@ const Index = () => {
       console.log('Company data:', company);
       setCurrentView('dashboard');
     } else if (userRole && !company) {
-      // For admins, allow access to dashboard even without company
-      if (userRole.role === 'admin') {
-        console.log('Admin user without company, allowing dashboard access');
+      // For admins, managers, and employees, allow access to dashboard even without company
+      // These roles don't require company data to function
+      if (userRole.role === 'admin' || userRole.role === 'manager' || userRole.role === 'employee') {
+        console.log(`${userRole.role} user without company, allowing dashboard access`);
         setCurrentView('dashboard');
       } else {
         console.log('User has role but no company, going to company onboarding');
@@ -78,21 +93,6 @@ const Index = () => {
       // If they have no profile at all, they're likely a new user
       console.log('Checking user profile to determine if new user...');
       
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
       // For now, assume it's a new user and redirect to company onboarding
       // TODO: Add better logic to distinguish between new users and data issues
       console.log('Assuming new user, going to company onboarding');
@@ -102,7 +102,7 @@ const Index = () => {
       console.log('Current state:', { userRole, company });
       // Don't change view if we're not sure about the state
     }
-  }, [user, userRole, company, authLoading]);
+  }, [user, userRole, company, authLoading, currentView]);
 
   const fetchUserProfile = async () => {
     if (!user) return;

@@ -135,30 +135,9 @@ export default function CompanyOnboarding({ onComplete, onBack }: CompanyOnboard
         website: formData.website || null,
       });
       
-      const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .insert({
-          name: formData.companyName,
-          email: formData.companyEmail,
-          industry: formData.industry,
-          phone: formData.phone || null,
-          address: formData.address || null,
-          website: formData.website || null,
-        })
-        .select()
-        .single();
-
-      if (companyError) {
-        console.error('Company creation error:', companyError);
-        throw companyError;
-      }
-      
-      console.log('Company created successfully:', company);
-
-      // Create admin role for the user
+      // Create admin role for the user (no company needed - single company system)
       console.log('Creating user role with data:', {
         user_id: validUser.id,
-        company_id: company.id,
         role: 'admin',
         is_active: true,
       });
@@ -167,7 +146,6 @@ export default function CompanyOnboarding({ onComplete, onBack }: CompanyOnboard
         .from('user_roles')
         .insert({
           user_id: validUser.id,
-          company_id: company.id,
           role: 'admin',
           is_active: true,
         });

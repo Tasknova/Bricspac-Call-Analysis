@@ -65,7 +65,7 @@ export default function AdminReportsPage() {
   const [companyOverview, setCompanyOverview] = useState<any>(null);
 
   useEffect(() => {
-    if (userRole?.company_id) {
+    if (userRole) {
       fetchReportData();
     }
   }, [userRole, timePeriod, selectedDate]);
@@ -93,8 +93,8 @@ export default function AdminReportsPage() {
   };
 
   const fetchReportData = async () => {
-    if (!userRole?.company_id) {
-      console.log('No company_id found in userRole:', userRole);
+    if (!userRole) {
+      console.log('No userRole found');
       return;
     }
 
@@ -103,7 +103,7 @@ export default function AdminReportsPage() {
       const { startDate, endDate } = getDateRange();
       
       console.log('==================== ADMIN REPORTS DATA FETCH ====================');
-      console.log('Fetching report data for company_id:', userRole.company_id);
+      console.log('Fetching report data');
       console.log('Time Period:', timePeriod);
       console.log('Selected Date:', selectedDate);
       console.log('Date range:', { 
@@ -117,7 +117,7 @@ export default function AdminReportsPage() {
       const { data: managersData, error: managersError } = await supabase
         .from('managers')
         .select('*')
-        .eq('company_id', userRole.company_id);
+;
 
       if (managersError) {
         console.error('Error fetching managers:', managersError);
@@ -130,7 +130,7 @@ export default function AdminReportsPage() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('*')
-        .eq('company_id', userRole.company_id);
+;
 
       if (employeesError) {
         console.error('Error fetching employees:', employeesError);
@@ -147,7 +147,6 @@ export default function AdminReportsPage() {
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .gte('created_at', startDate)
         .lte('created_at', endDate);
 
@@ -169,7 +168,6 @@ export default function AdminReportsPage() {
       const { data: analysesData, error: analysesError } = await supabase
         .from('analyses')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .gte('created_at', startDate)
         .lte('created_at', endDate);
 

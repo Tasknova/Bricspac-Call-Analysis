@@ -28,7 +28,6 @@ interface Call {
   id: string;
   lead_id: string;
   employee_id: string;
-  company_id?: string;
   outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered' | 'failed';
   notes: string;
   call_date: string;
@@ -70,11 +69,10 @@ interface Analysis {
 }
 
 interface CallHistoryManagerProps {
-  companyId: string;
   managerId?: string;
 }
 
-export default function CallHistoryManager({ companyId, managerId }: CallHistoryManagerProps) {
+export default function CallHistoryManager({ managerId }: CallHistoryManagerProps) {
   const { userRole } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -120,7 +118,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   };
 
   const fetchData = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       setLoading(true);
@@ -198,7 +196,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
               )
             )
           `)
-          .eq('company_id', userRole.company_id)
           .order('created_at', { ascending: false});
 
         if (callsResultError) {
@@ -227,7 +224,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
             stored_file_url
           )
         `)
-        .eq('company_id', userRole.company_id);
 
       if (analysesError) {
         console.error('Analyses error:', analysesError);
@@ -263,7 +259,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
 
   useEffect(() => {
     fetchData();
-  }, [userRole?.company_id]);
+  }, [userRole]);
 
   // More frequent auto-refresh when there are processing analyses
   useEffect(() => {
@@ -333,7 +329,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           .from('recordings')
           .insert({
             user_id: call.employee_id,
-            company_id: call.company_id,
             stored_file_url: recordingUrl,
             file_name: fileName,
             status: 'pending',
@@ -367,7 +362,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
             recording_id: recording.id,
             call_id: call.id,
             user_id: call.employee_id,
-            company_id: call.company_id,
             status: 'processing',
             sentiment_score: null,
             engagement_score: null,
@@ -520,7 +514,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
         .from('recordings')
         .insert({
           user_id: selectedCall.employee_id,
-          company_id: userRole?.company_id,
           stored_file_url: recordingUrl.trim(),
           file_name: analysisFileName.trim(),
           status: 'pending',
@@ -538,7 +531,6 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           recording_id: recording.id,
           call_id: selectedCall.id,
           user_id: selectedCall.employee_id,
-          company_id: userRole?.company_id,
           status: 'pending',
           sentiment_score: null,
           engagement_score: null,
@@ -661,7 +653,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   // Fetch all employees and managers for filters
   useEffect(() => {
     const fetchFilterData = async () => {
-      if (!userRole?.company_id) return;
+      if (!userRole) return;
       
       try {
         if (managerId) {
@@ -682,13 +674,11 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           const { data: employeesData, error: employeesError } = await supabase
             .from('employees')
             .select('id, user_id, full_name, email, manager_id')
-            .eq('company_id', userRole.company_id)
             .eq('is_active', true);
 
           const { data: managersData, error: managersError } = await supabase
             .from('managers')
             .select('id, user_id, full_name, email')
-            .eq('company_id', userRole.company_id)
             .eq('is_active', true);
 
           if (employeesError) {
@@ -711,7 +701,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     };
 
     fetchFilterData();
-  }, [managerId, userRole?.company_id]);
+  }, [managerId, userRole]);
 
   // Use all employees for filter, not just those who made calls
   // Use user_id as the id since employee_id in call_history is the user_id

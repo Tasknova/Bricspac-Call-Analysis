@@ -54,19 +54,18 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
 
   useEffect(() => {
-    if (userRole?.company_id) {
+    if (userRole) {
       fetchCompanySettings();
     }
   }, [userRole]);
 
   const fetchCompanySettings = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       const { data, error } = await supabase
         .from('company_settings')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (error && error.code !== 'PGRST116') {
@@ -118,7 +117,6 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
           from: from,
           to: to,
           callerId: callerId,
-          company_id: userRole?.company_id,
         }),
       });
 
@@ -139,7 +137,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://hueohfwgqzvwwimqakxn.supabase.co'
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZW9oZndncXp2d3dpbXFha3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MzQ5NzgsImV4cCI6MjA3ODUxMDk3OH0.v_1TKhYFXDsWlw-Z3MeiFDco3zLQETIpAQhpqyTv1Ic'
-      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/${callSid}?company_id=${userRole?.company_id}`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/${callSid}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -198,7 +196,6 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
           try {
             const { error: insertError } = await supabase.from('call_history').insert({
               employee_id: userRole?.user_id,
-              company_id: userRole?.company_id,
               outcome: 'not_answered',
               notes: `Call was not answered by the recipient. Dialed number: ${phoneNumber}`,
               exotel_call_sid: currentCallSid,
@@ -297,7 +294,6 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
         .from('leads')
         .insert({
           user_id: userRole?.user_id,
-          company_id: userRole?.company_id,
           name: leadDetails.name,
           email: leadDetails.email || null,
           contact: phoneNumber,
@@ -350,7 +346,6 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
       const callHistoryData = {
         lead_id: createdLeadId,
         employee_id: userRole?.user_id,
-        company_id: userRole?.company_id,
         outcome: callOutcomeStatus,
         notes: callOutcome,
         next_follow_up: nextFollowUpDateTime,

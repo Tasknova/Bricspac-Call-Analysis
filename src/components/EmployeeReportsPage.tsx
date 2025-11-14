@@ -80,7 +80,6 @@ export default function EmployeeReportsPage() {
       console.log('==================== EMPLOYEE REPORTS DATA FETCH ====================');
       console.log('User Role:', userRole);
       console.log('Fetching report data for employee user_id:', userRole.user_id);
-      console.log('Company ID:', userRole.company_id);
       console.log('Time Period:', timePeriod);
       console.log('Selected Date:', selectedDate);
       console.log('Date range:', { 
@@ -93,7 +92,7 @@ export default function EmployeeReportsPage() {
       // Verify employee exists in database
       const { data: employeeData, error: empError } = await supabase
         .from('employees')
-        .select('id, user_id, full_name, email, company_id, manager_id, is_active')
+        .select('id, user_id, full_name, email, manager_id, is_active')
         .eq('user_id', userRole.user_id)
         .single();
       

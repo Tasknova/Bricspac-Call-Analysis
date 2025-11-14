@@ -29,14 +29,13 @@ export default function ExotelSetupModal({ isOpen, onClose, onComplete }: Exotel
   });
 
   const handleSaveCredentials = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     setIsLoading(true);
     try {
       const { error } = await supabase
         .from('company_settings')
         .upsert({
-          company_id: userRole.company_id,
           exotel_api_key: exotelCredentials.api_key,
           exotel_api_token: exotelCredentials.api_token,
           exotel_subdomain: exotelCredentials.subdomain,

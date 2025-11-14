@@ -147,13 +147,13 @@ export default function ManagerDashboard() {
   });
 
   useEffect(() => {
-    if (userRole && company) {
+    if (userRole) {
       fetchData();
     }
-  }, [userRole, company]);
+  }, [userRole]);
 
   const fetchData = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       setLoading(true);
@@ -163,7 +163,6 @@ export default function ManagerDashboard() {
         .from('managers')
         .select('*')
         .eq('user_id', userRole.user_id)
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (managerError) throw managerError;
@@ -175,7 +174,6 @@ export default function ManagerDashboard() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .eq('manager_id', managerData.id)
         .eq('is_active', true);
 
@@ -210,7 +208,7 @@ export default function ManagerDashboard() {
           .from('leads')
           .select('*')
           .in('assigned_to', employeeUserIds)
-          .eq('company_id', userRole.company_id);
+;
         
         if (assignedError) {
           console.error('Error fetching assigned leads:', assignedError);
@@ -225,7 +223,7 @@ export default function ManagerDashboard() {
         .from('leads')
         .select('*')
         .is('assigned_to', null)
-        .eq('company_id', userRole.company_id);
+;
       
       if (unassignedError) {
         console.error('Error fetching unassigned leads:', unassignedError);
@@ -247,7 +245,7 @@ export default function ManagerDashboard() {
         .from('lead_groups')
         .select('*')
         .eq('assigned_to', managerData.id)
-        .eq('company_id', userRole.company_id);
+;
 
       if (leadGroupsError) {
         console.error('Lead groups error:', leadGroupsError);
@@ -270,7 +268,6 @@ export default function ManagerDashboard() {
           .from('call_history')
           .select('*, leads(name, email, contact), employees(full_name, email)')
           .in('employee_id', employeeUserIds)
-          .eq('company_id', userRole.company_id)
           .order('created_at', { ascending: false });
         callsData = data;
         callsError = error;
@@ -326,7 +323,7 @@ export default function ManagerDashboard() {
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       console.log('Creating employee with new method (not Supabase Auth)');
@@ -337,7 +334,6 @@ export default function ManagerDashboard() {
         .from('managers')
         .select('id')
         .eq('user_id', userRole.user_id)
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (managerError) throw managerError;
@@ -347,7 +343,6 @@ export default function ManagerDashboard() {
         .from('employees')
         .insert({
           user_id: demoUserId,
-          company_id: userRole.company_id,
           manager_id: managerData.id,
           full_name: newEmployee.fullName,
         email: newEmployee.email,
@@ -363,7 +358,6 @@ export default function ManagerDashboard() {
         .from('user_roles')
         .insert({
           user_id: demoUserId,
-          company_id: userRole.company_id,
           role: 'employee',
           manager_id: userRole.user_id,
           is_active: true,
@@ -401,7 +395,7 @@ export default function ManagerDashboard() {
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       // Determine assignment logic
@@ -427,7 +421,6 @@ export default function ManagerDashboard() {
         .from('leads')
         .insert({
           user_id: assignedUserId || userRole.user_id,
-          company_id: userRole.company_id,
           name: newLead.name,
           email: newLead.email,
           contact: newLead.contact,
@@ -470,13 +463,12 @@ export default function ManagerDashboard() {
   const handleAddLeadGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       const { error } = await supabase
         .from('lead_groups')
         .insert({
-          company_id: userRole.company_id,
           group_name: newLeadGroup.groupName,
           description: newLeadGroup.description || null,
           assigned_to: userRole.user_id, // Assign to current manager
@@ -1604,7 +1596,6 @@ export default function ManagerDashboard() {
 
             <TabsContent value="call-history" className="space-y-6">
               <CallHistoryManager 
-                companyId={userRole?.company_id || ''} 
                 managerId={manager?.id} 
               />
             </TabsContent>

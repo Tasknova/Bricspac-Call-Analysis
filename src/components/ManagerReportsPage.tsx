@@ -36,7 +36,7 @@ export default function ManagerReportsPage() {
   const [teamOverview, setTeamOverview] = useState<any>(null);
 
   useEffect(() => {
-    if (userRole?.company_id) {
+    if (userRole) {
       fetchReportData();
     }
   }, [userRole, timePeriod, selectedDate]);
@@ -64,8 +64,8 @@ export default function ManagerReportsPage() {
   };
 
   const fetchReportData = async () => {
-    if (!userRole?.company_id) {
-      console.log('No company_id found in userRole:', userRole);
+    if (!userRole) {
+      console.log('No userRole found');
       return;
     }
 
@@ -74,7 +74,7 @@ export default function ManagerReportsPage() {
       const { startDate, endDate } = getDateRange();
       
       console.log('==================== MANAGER REPORTS DATA FETCH ====================');
-      console.log('Fetching report data for company_id:', userRole.company_id);
+      console.log('Fetching report data');
       console.log('Manager user_id:', userRole.user_id);
       console.log('Time Period:', timePeriod);
       console.log('Selected Date:', selectedDate);
@@ -90,7 +90,6 @@ export default function ManagerReportsPage() {
         .from('managers')
         .select('id')
         .eq('user_id', userRole.user_id)
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (managerError) {
@@ -109,7 +108,6 @@ export default function ManagerReportsPage() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .eq('manager_id', managerData.id);
 
       if (employeesError) {

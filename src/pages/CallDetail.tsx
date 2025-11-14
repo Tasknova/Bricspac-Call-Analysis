@@ -4,8 +4,10 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, Mail, User as UserIcon, Calendar, Clock, Headphones, FileText, ArrowLeft, PhoneCall, PlayCircle, Link as LinkIcon } from "lucide-react";
+import { Phone, Mail, User as UserIcon, Calendar, Clock, Headphones, FileText, ArrowLeft, PhoneCall, PlayCircle, Link as LinkIcon, Edit, Save } from "lucide-react";
 
 function useQuery() {
   const { search } = useLocation();
@@ -18,6 +20,9 @@ export default function CallDetail() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [record, setRecord] = useState<any | null>(null);
+  const [isEditingRecordingUrl, setIsEditingRecordingUrl] = useState(false);
+  const [recordingUrlInput, setRecordingUrlInput] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
 
   const callHistoryId = query.get("id");
   const leadId = query.get("leadId");
@@ -111,6 +116,51 @@ export default function CallDetail() {
   
   const startTime = formatCallDateTime(record.exotel_start_time);
   const endTime = formatCallDateTime(record.exotel_end_time);
+
+  const handleSaveRecordingUrl = async () => {
+    if (!record?.id || !recordingUrlInput.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a valid recording URL',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setSavingUrl(true);
+      const { error } = await supabase
+        .from('call_history')
+        .update({ exotel_recording_url: recordingUrlInput.trim() })
+        .eq('id', record.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setRecord((prev: any) => prev ? { ...prev, exotel_recording_url: recordingUrlInput.trim() } : null);
+      setIsEditingRecordingUrl(false);
+      
+      toast({
+        title: 'Success',
+        description: 'Recording URL saved successfully',
+      });
+    } catch (error: any) {
+      console.error('Error saving recording URL:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save recording URL. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  useEffect(() => {
+    if (record) {
+      setRecordingUrlInput(record.exotel_recording_url || '');
+    }
+  }, [record]);
 
   return (
     <div className="min-h-screen p-6">
@@ -207,7 +257,7 @@ export default function CallDetail() {
             <CardTitle className="flex items-center gap-2"><PlayCircle className="h-5 w-5" /> Call Recording</CardTitle>
           </CardHeader>
           <CardContent>
-            {record.exotel_recording_url ? (
+            {record.exotel_recording_url && !isEditingRecordingUrl ? (
               <div className="space-y-3">
                 <div className="flex items-start gap-2 text-sm">
                   <LinkIcon className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -221,7 +271,7 @@ export default function CallDetail() {
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => window.open(record.exotel_recording_url, '_blank')} 
-                    className="gap-2"
+                    className="gap-2 flex-1"
                     size="sm"
                   >
                     <PlayCircle className="h-4 w-4" />
@@ -234,15 +284,74 @@ export default function CallDetail() {
                       toast({ title: "Copied!", description: "Recording URL copied to clipboard" });
                     }}
                     size="sm"
-                    className="gap-2"
+                    className="gap-2 flex-1"
                   >
                     <LinkIcon className="h-4 w-4" />
                     Copy URL
                   </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditingRecordingUrl(true);
+                      setRecordingUrlInput(record.exotel_recording_url || '');
+                    }}
+                    size="sm"
+                    className="gap-2 flex-1"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </div>
+              </div>
+            ) : isEditingRecordingUrl ? (
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="recordingUrl">Recording URL</Label>
+                  <Input
+                    id="recordingUrl"
+                    type="url"
+                    value={recordingUrlInput}
+                    onChange={(e) => setRecordingUrlInput(e.target.value)}
+                    placeholder="https://example.com/recording.mp3"
+                    className="mt-1"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleSaveRecordingUrl}
+                    disabled={savingUrl || !recordingUrlInput.trim()}
+                    className="flex-1 gap-2"
+                    size="sm"
+                  >
+                    <Save className="h-4 w-4" />
+                    {savingUrl ? 'Saving...' : 'Save URL'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditingRecordingUrl(false);
+                      setRecordingUrlInput(record.exotel_recording_url || '');
+                    }}
+                    disabled={savingUrl}
+                    className="flex-1"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No recording available for this call</p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">No recording available for this call</p>
+                <Button
+                  onClick={() => setIsEditingRecordingUrl(true)}
+                  className="gap-2"
+                  size="sm"
+                >
+                  <Edit className="h-4 w-4" />
+                  Add Recording URL
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

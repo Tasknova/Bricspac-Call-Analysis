@@ -123,7 +123,6 @@ interface Call {
   id: string;
   lead_id: string;
   employee_id: string;
-  company_id?: string;
   outcome: 'interested' | 'not_interested' | 'follow_up' | 'converted' | 'lost' | 'completed' | 'not_answered' | 'failed';
   notes: string;
   call_date: string;
@@ -221,7 +220,7 @@ export default function EmployeeDashboard() {
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (userRole && company) {
+    if (userRole) {
       fetchData();
       fetchCompanySettings();
       
@@ -240,7 +239,7 @@ export default function EmployeeDashboard() {
         clearInterval(timeInterval);
       };
     }
-  }, [userRole, company]);
+  }, [userRole]);
 
   // More frequent auto-refresh when there are processing analyses
   useEffect(() => {
@@ -255,7 +254,7 @@ export default function EmployeeDashboard() {
   }, [processingCalls.size]);
 
   const fetchData = async (showLoading = true) => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       if (showLoading) {
@@ -390,7 +389,7 @@ export default function EmployeeDashboard() {
   };
 
   const fetchAIInsights = useCallback(async () => {
-    if (!userRole?.company_id || calls.length === 0) {
+    if (calls.length === 0) {
       return;
     }
 
@@ -587,7 +586,7 @@ Please provide insights that are specific, actionable, and tailored to these met
 
   // Auto-fetch insights every 24 hours (only if insights have been fetched before)
   useEffect(() => {
-    if (!userRole?.company_id || calls.length === 0 || !lastInsightsFetch) return;
+    if (calls.length === 0 || !lastInsightsFetch) return;
 
     const shouldFetchInsights = () => {
       const hoursSinceLastFetch = (new Date().getTime() - lastInsightsFetch.getTime()) / (1000 * 60 * 60);
@@ -666,7 +665,6 @@ Please provide insights that are specific, actionable, and tailored to these met
           .from('recordings')
           .insert({
             user_id: userRole?.user_id,
-            company_id: userRole?.company_id,
             stored_file_url: recordingUrl,
             file_name: fileName,
             status: 'pending',
@@ -700,7 +698,6 @@ Please provide insights that are specific, actionable, and tailored to these met
             recording_id: recording.id,
             call_id: call.id,
             user_id: userRole?.user_id,
-            company_id: userRole?.company_id,
             status: 'processing',
             sentiment_score: null,
             engagement_score: null,
@@ -935,7 +932,6 @@ Please provide insights that are specific, actionable, and tailored to these met
         .insert({
           lead_id: selectedLeadToRemove.id,
           employee_id: employeeData.id,
-          company_id: userRole?.company_id,
           lead_name: selectedLeadToRemove.name,
           lead_email: selectedLeadToRemove.email,
           lead_contact: selectedLeadToRemove.contact,
@@ -974,13 +970,12 @@ Please provide insights that are specific, actionable, and tailored to these met
   };
 
   const fetchCompanySettings = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       const { data, error } = await supabase
         .from('company_settings')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
@@ -1025,7 +1020,6 @@ Please provide insights that are specific, actionable, and tailored to these met
         .from('recordings')
         .insert({
           user_id: userRole?.user_id,
-          company_id: userRole?.company_id,
           stored_file_url: recordingUrl.trim(),
           file_name: analysisFileName.trim(),
           status: 'pending',
@@ -1043,7 +1037,6 @@ Please provide insights that are specific, actionable, and tailored to these met
           recording_id: recording.id,
           call_id: selectedCall.id,
           user_id: userRole?.user_id,
-          company_id: userRole?.company_id,
           status: 'pending',
           sentiment_score: null,
           engagement_score: null,
@@ -1150,7 +1143,6 @@ Please provide insights that are specific, actionable, and tailored to these met
         .insert({
           lead_id: selectedLead.id,
           employee_id: employeeData.id,
-          company_id: userRole?.company_id,
           outcome: callOutcomeStatus,
           notes: callOutcome.trim(),
           call_date: new Date().toISOString(),
@@ -1215,7 +1207,6 @@ Please provide insights that are specific, actionable, and tailored to these met
           from: from,
           to: to,
           callerId: callerId,
-          company_id: userRole?.company_id,
         }),
       });
 
@@ -1236,7 +1227,7 @@ Please provide insights that are specific, actionable, and tailored to these met
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://hueohfwgqzvwwimqakxn.supabase.co'
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1ZW9oZndncXp2d3dpbXFha3huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MzQ5NzgsImV4cCI6MjA3ODUxMDk3OH0.v_1TKhYFXDsWlw-Z3MeiFDco3zLQETIpAQhpqyTv1Ic'
-      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/${callSid}?company_id=${userRole?.company_id}`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/exotel-proxy/calls/${callSid}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -1304,7 +1295,6 @@ Please provide insights that are specific, actionable, and tailored to these met
             const { error: insertError } = await supabase.from('call_history').insert({
               lead_id: selectedLead?.id,
               employee_id: userRole.user_id,
-              company_id: userRole?.company_id,
               outcome: 'not_answered',
               notes: 'Call was not answered by the recipient',
               exotel_call_sid: currentCallSid,
@@ -1341,7 +1331,7 @@ Please provide insights that are specific, actionable, and tailored to these met
   };
 
   const saveCallToDatabase = async (callData: any) => {
-    if (!selectedLead || !userRole?.company_id) return;
+    if (!selectedLead || !userRole) return;
 
     try {
       console.log('📞 Saving call to database with data:', callData);
@@ -1353,7 +1343,6 @@ Please provide insights that are specific, actionable, and tailored to these met
       const callHistoryData = {
         lead_id: selectedLead.id,
         employee_id: userRole.user_id, // Fixed: Use userRole.user_id
-        company_id: userRole.company_id,
         outcome: 'completed', // Mark as completed since call was answered
         notes: 'Call completed via Exotel',
         exotel_response: callData, // Store complete Exotel response as JSONB
@@ -1388,7 +1377,6 @@ Please provide insights that are specific, actionable, and tailored to these met
       const callOutcomeData = {
         lead_id: selectedLead.id,
         employee_id: userRole.user_id, // Fixed: Use userRole.user_id
-        company_id: userRole.company_id,
         outcome: 'completed', // Mark as completed since call was answered
         notes: 'Call completed via Exotel',
         exotel_call_sid: callData.Sid,

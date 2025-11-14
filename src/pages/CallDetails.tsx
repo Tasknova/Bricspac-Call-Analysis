@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
-import { ArrowLeft, Phone, Clock, User, Calendar, FileText, Play, Download } from 'lucide-react';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { ArrowLeft, Phone, Clock, User, Calendar, FileText, Play, Download, Save, Edit } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
 interface CallHistoryRecord {
@@ -48,6 +50,9 @@ const CallDetails: React.FC = () => {
   const { toast } = useToast();
   const [callData, setCallData] = useState<CallHistoryRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditingRecordingUrl, setIsEditingRecordingUrl] = useState(false);
+  const [recordingUrlInput, setRecordingUrlInput] = useState('');
+  const [savingUrl, setSavingUrl] = useState(false);
 
   useEffect(() => {
     if (callId) {
@@ -133,6 +138,51 @@ const CallDetails: React.FC = () => {
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  const handleSaveRecordingUrl = async () => {
+    if (!callId || !recordingUrlInput.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a valid recording URL',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setSavingUrl(true);
+      const { error } = await supabase
+        .from('call_history')
+        .update({ exotel_recording_url: recordingUrlInput.trim() })
+        .eq('id', callId);
+
+      if (error) throw error;
+
+      // Update local state
+      setCallData(prev => prev ? { ...prev, exotel_recording_url: recordingUrlInput.trim() } : null);
+      setIsEditingRecordingUrl(false);
+      
+      toast({
+        title: 'Success',
+        description: 'Recording URL saved successfully',
+      });
+    } catch (error: any) {
+      console.error('Error saving recording URL:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save recording URL. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingUrl(false);
+    }
+  };
+
+  useEffect(() => {
+    if (callData) {
+      setRecordingUrlInput(callData.exotel_recording_url || '');
+    }
+  }, [callData]);
 
   if (loading) {
     return (
@@ -288,34 +338,86 @@ const CallDetails: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {callData.exotel_recording_url ? (
+                {callData.exotel_recording_url && !isEditingRecordingUrl ? (
                   <>
                     <audio controls className="w-full">
                       <source src={callData.exotel_recording_url} type="audio/mpeg" />
                       Your browser does not support the audio element.
                     </audio>
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(callData.exotel_recording_url, '_blank')}
-                      className="w-full"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Recording
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => window.open(callData.exotel_recording_url, '_blank')}
+                        className="flex-1"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Recording
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingRecordingUrl(true);
+                          setRecordingUrlInput(callData.exotel_recording_url || '');
+                        }}
+                        className="flex-1"
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit URL
+                      </Button>
+                    </div>
                     <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
                       <strong>Recording URL:</strong> {callData.exotel_recording_url}
                     </div>
                   </>
+                ) : isEditingRecordingUrl ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="recordingUrl">Recording URL</Label>
+                      <Input
+                        id="recordingUrl"
+                        type="url"
+                        value={recordingUrlInput}
+                        onChange={(e) => setRecordingUrlInput(e.target.value)}
+                        placeholder="https://example.com/recording.mp3"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleSaveRecordingUrl}
+                        disabled={savingUrl || !recordingUrlInput.trim()}
+                        className="flex-1 gap-2"
+                      >
+                        <Save className="h-4 w-4" />
+                        {savingUrl ? 'Saving...' : 'Save URL'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingRecordingUrl(false);
+                          setRecordingUrlInput(callData.exotel_recording_url || '');
+                        }}
+                        disabled={savingUrl}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="text-center py-8">
+                  <div className="text-center py-4">
                     <Play className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 mb-2">No recording available</p>
-                    <p className="text-xs text-gray-400">
-                      Recording URL: <span className="font-mono bg-gray-100 px-2 py-1 rounded">null</span>
-                    </p>
-                    <p className="text-xs text-gray-400 mt-2">
+                    <p className="text-xs text-gray-400 mb-4">
                       This could be due to Exotel configuration or call type settings.
                     </p>
+                    <Button
+                      onClick={() => setIsEditingRecordingUrl(true)}
+                      className="gap-2"
+                    >
+                      <Edit className="h-4 w-4" />
+                      Add Recording URL
+                    </Button>
                   </div>
                 )}
               </div>

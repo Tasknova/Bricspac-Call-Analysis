@@ -5,22 +5,9 @@ import { supabase } from '@/lib/supabase';
 export interface UserRole {
   id: string;
   user_id: string;
-  company_id: string;
   role: 'admin' | 'manager' | 'employee';
   manager_id?: string;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Company {
-  id: string;
-  name: string;
-  email: string;
-  industry?: string;
-  phone?: string;
-  address?: string;
-  website?: string;
   created_at: string;
   updated_at: string;
 }
@@ -29,13 +16,12 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   userRole: UserRole | null;
-  company: Company | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signInAdmin: (email: string, password: string) => Promise<User>;
-  signInManager: (email: string, password: string, companyId: string) => Promise<User>;
-  signInEmployee: (email: string, password: string, companyId: string) => Promise<User>;
+  signInManager: (email: string, password: string) => Promise<User>;
+  signInEmployee: (email: string, password: string) => Promise<User>;
   signUpWithEmail: (email: string, password: string, fullName: string) => Promise<{ user: User; needsConfirmation: boolean }>;
   refreshUserData: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -59,7 +45,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch user role and company data
@@ -105,32 +90,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           console.log('Using first role:', firstRole);
           setUserRole(firstRole);
           
-          // Fetch company data for this role
-          if (firstRole?.company_id) {
-            console.log('Fetching company data for company_id:', firstRole.company_id);
-            const { data: companyData, error: companyError } = await supabase
-              .from('companies')
-              .select('*')
-              .eq('id', firstRole.company_id)
-              .single();
-
-            if (companyError) {
-              console.error('Error fetching company:', companyError);
-              setCompany(null);
-            } else {
-              console.log('Company data fetched:', companyData);
-              setCompany(companyData);
-            }
-          } else {
-            setCompany(null);
-          }
-          
           setLoading(false);
           return;
         }
         
         setUserRole(null);
-        setCompany(null);
         setLoading(false);
         return;
       }
@@ -138,44 +102,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (!roleData) {
         console.log('No role data found for user:', userId);
         setUserRole(null);
-        setCompany(null);
         setLoading(false);
         return;
       }
 
       console.log('User role fetched:', roleData);
       setUserRole(roleData);
-
-      // Fetch company data
-      if (roleData?.company_id) {
-        console.log('Fetching company data for company_id:', roleData.company_id);
-        const { data: companyData, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', roleData.company_id)
-          .single();
-
-        if (companyError) {
-          console.error('Error fetching company:', companyError);
-          console.log('Company error details:', companyError);
-          setCompany(null);
-          setLoading(false);
-          return;
-        }
-
-        if (!companyData) {
-          console.log('No company data found for company_id:', roleData.company_id);
-          setCompany(null);
-          setLoading(false);
-          return;
-        }
-
-        console.log('Company data fetched:', companyData);
-        setCompany(companyData);
-      } else {
-        console.log('No company_id in role data');
-        setCompany(null);
-      }
       
       setLoading(false);
     } catch (error) {
@@ -208,7 +140,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             // Restore the session
             setUser(sessionData.user);
             setUserRole(sessionData.userRole);
-            setCompany(sessionData.company);
             setSession(sessionData.session);
             
             console.log('Restored custom session successfully');
@@ -241,7 +172,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Add a timeout to prevent infinite loading
     const timeout = setTimeout(() => {
       console.log('Auth loading timeout - forcing loading to false');
-      console.log('Current state:', { user: !!user, userRole, company });
+      console.log('Current state:', { user: !!user, userRole });
       setLoading(false);
     }, 15000); // 15 second timeout
     
@@ -260,7 +191,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         } else {
           console.log('Auth state change - no user, clearing data');
           setUserRole(null);
-          setCompany(null);
         }
         
         setLoading(false);
@@ -376,30 +306,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUserRole(userRoleData);
       console.log('Set user in context:', mockUser);
 
-      // Fetch company data
-      let companyData = null;
-      if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
-
-        console.log('Company query result:', company);
-        console.log('Company query error:', companyError);
-
-        if (company) {
-          setCompany(company);
-          companyData = company;
-          console.log('Set company in context:', company);
-        }
-      }
-
       // Save session to localStorage for persistence
       const sessionData = {
         user: mockUser,
         userRole: userRoleData,
-        company: companyData,
         session: null, // No Supabase session for custom auth
         timestamp: Date.now()
       };
@@ -491,30 +401,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUserRole(userRoleData);
       console.log('Set user in context:', mockUser);
 
-      // Fetch company data
-      let companyData = null;
-      if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
-
-        console.log('Company query result:', company);
-        console.log('Company query error:', companyError);
-
-        if (company) {
-          setCompany(company);
-          companyData = company;
-          console.log('Set company in context:', company);
-        }
-      }
-
       // Save session to localStorage for persistence
       const sessionData = {
         user: mockUser,
         userRole: userRoleData,
-        company: companyData,
         session: null, // No Supabase session for custom auth
         timestamp: Date.now()
       };
@@ -607,30 +497,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUserRole(userRoleData);
       console.log('Set user in context:', mockUser);
 
-      // Fetch company data
-      let companyData = null;
-      if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
-
-        console.log('Company query result:', company);
-        console.log('Company query error:', companyError);
-
-        if (company) {
-          setCompany(company);
-          companyData = company;
-          console.log('Set company in context:', company);
-        }
-      }
-
       // Save session to localStorage for persistence
       const sessionData = {
         user: mockUser,
         userRole: userRoleData,
-        company: companyData,
         session: null, // No Supabase session for custom auth
         timestamp: Date.now()
       };
@@ -720,7 +590,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Clear local state
       setUser(null);
       setUserRole(null);
-      setCompany(null);
       setSession(null);
       console.log('Cleared local state');
       
@@ -742,7 +611,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     user,
     session,
     userRole,
-    company,
     loading,
     signInWithGoogle,
     signInWithEmail,

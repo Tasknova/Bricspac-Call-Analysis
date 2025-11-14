@@ -56,7 +56,10 @@ import {
   FileText,
   ArrowLeft,
   CheckCircle,
-  UserCog
+  UserCog,
+  Brain,
+  PlayCircle,
+  ExternalLink
 } from "lucide-react";
 
 interface User {
@@ -96,7 +99,7 @@ const DEPARTMENT_OPTIONS = [
 ];
 
 export default function AdminDashboard() {
-  const { user, userRole, company, signOut } = useAuth();
+  const { user, userRole, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -108,6 +111,10 @@ export default function AdminDashboard() {
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSidebarItem, setActiveSidebarItem] = useState('overview');
+  const [analysisTab, setAnalysisTab] = useState<'analyzed' | 'ready'>('analyzed');
+  const [analyzedCalls, setAnalyzedCalls] = useState<any[]>([]);
+  const [readyToAnalyzeCalls, setReadyToAnalyzeCalls] = useState<any[]>([]);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [isViewingGroupPage, setIsViewingGroupPage] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
@@ -160,8 +167,9 @@ export default function AdminDashboard() {
   const [companyData, setCompanyData] = useState({
     name: '',
     email: '',
-    industry: '',
+    contact: '',
   });
+  const [clientData, setClientData] = useState<any>(null);
   const [isPasswordEditing, setIsPasswordEditing] = useState(false);
   const [passwordData, setPasswordData] = useState({
     new_password: '',
@@ -219,26 +227,50 @@ export default function AdminDashboard() {
   const [newFromNumber, setNewFromNumber] = useState("");
 
   useEffect(() => {
-    if (userRole && company) {
+    if (userRole) {
       fetchUsers();
       fetchCompanySettings();
+      fetchClientData();
     }
-  }, [userRole, company]);
+  }, [userRole]);
 
-  // Initialize profile and company data
+  const fetchClientData = async () => {
+    try {
+      // Fetch the first client (since it's single company system)
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching client data:', error);
+        return;
+      }
+
+      if (data) {
+        setClientData(data);
+        setCompanyData({
+          name: data.name || '',
+          email: data.email || '',
+          contact: data.contact || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching client data:', error);
+    }
+  };
+
+  // Initialize profile data
   useEffect(() => {
-    if (user && company) {
+    if (user) {
       setProfileData({
         full_name: user.user_metadata?.full_name || '',
         email: user.email || '',
       });
-      setCompanyData({
-        name: company.name || '',
-        email: company.email || '',
-        industry: company.industry || '',
-      });
+      // Client data will be loaded from clients table
     }
-  }, [user, company]);
+  }, [user]);
 
   // Track addUserType changes
   useEffect(() => {
@@ -262,17 +294,16 @@ export default function AdminDashboard() {
   }, [isAddUserModalOpen, addUserType]);
 
   const fetchUsers = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       setLoading(true);
-      console.log('Fetching users for company:', userRole.company_id);
+      console.log('Fetching users');
 
       // Fetch managers from managers table
       const { data: managersData, error: managersError } = await supabase
         .from('managers')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .eq('is_active', true);
 
       if (managersError) {
@@ -290,7 +321,6 @@ export default function AdminDashboard() {
           *,
           manager:managers!manager_id(full_name, department)
         `)
-        .eq('company_id', userRole.company_id)
         .eq('is_active', true);
 
       if (employeesError) throw employeesError;
@@ -305,7 +335,6 @@ export default function AdminDashboard() {
         return {
           id: manager.id,
           user_id: manager.user_id,
-          company_id: manager.company_id,
           role: 'manager',
           manager_id: null,
           is_active: manager.is_active,
@@ -327,7 +356,6 @@ export default function AdminDashboard() {
         return {
           id: employee.id,
           user_id: employee.user_id,
-          company_id: employee.company_id,
           role: 'employee',
           manager_id: employee.manager_id,
           is_active: employee.is_active,
@@ -349,7 +377,7 @@ export default function AdminDashboard() {
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
         .select('*')
-        .eq('company_id', userRole.company_id);
+;
 
       if (leadsError) {
         console.error('Error fetching leads:', leadsError);
@@ -408,7 +436,6 @@ export default function AdminDashboard() {
       const { data: leadGroupsData, error: leadGroupsError } = await supabase
         .from('lead_groups')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .order('created_at', { ascending: false });
 
       if (leadGroupsError) {
@@ -422,7 +449,6 @@ export default function AdminDashboard() {
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
         .select('*, leads(name, email, contact), employees(full_name, email)')
-        .eq('company_id', userRole.company_id)
         .order('created_at', { ascending: false });
 
       if (callsError) {
@@ -456,14 +482,107 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchAnalysisData = async () => {
+    try {
+      setLoadingAnalysis(true);
+
+      // Fetch all calls with recording URLs
+      const { data: allCalls, error: callsError } = await supabase
+        .from('call_history')
+        .select(`
+          *,
+          leads (
+            name,
+            email,
+            contact
+          ),
+          employees (
+            full_name,
+            email
+          )
+        `)
+        .not('exotel_recording_url', 'is', null)
+        .order('created_at', { ascending: false });
+
+      if (callsError) {
+        console.error('Error fetching calls:', callsError);
+        setAnalyzedCalls([]);
+        setReadyToAnalyzeCalls([]);
+        return;
+      }
+
+      // Separate calls into analyzed and ready to analyze based on is_analyzed column
+      const analyzed: any[] = [];
+      const readyToAnalyze: any[] = [];
+
+      // Fetch analyses for analyzed calls to get analysis details
+      const analyzedCallIds = (allCalls || [])
+        .filter((call: any) => call.is_analyzed === true)
+        .map((call: any) => call.id);
+
+      let analysesMap = new Map();
+      if (analyzedCallIds.length > 0) {
+        const { data: analysesData, error: analysesError } = await supabase
+          .from('analyses')
+          .select('*')
+          .in('call_id', analyzedCallIds)
+          .order('created_at', { ascending: false });
+
+        if (!analysesError && analysesData) {
+          analysesData.forEach((analysis: any) => {
+            if (analysis.call_id) {
+              // Keep the most recent analysis for each call
+              if (!analysesMap.has(analysis.call_id)) {
+                analysesMap.set(analysis.call_id, analysis);
+              }
+            }
+          });
+        }
+      }
+
+      (allCalls || []).forEach((call: any) => {
+        if (call.is_analyzed === true) {
+          // Get the analysis for this call
+          const analysis = analysesMap.get(call.id);
+          analyzed.push({ ...call, analysis });
+        } else {
+          // Only include calls that are not "not_answered" in ready to analyze
+          // Calls with outcome "not_answered" should not be shown as ready to analyze
+          const outcome = call.outcome?.toLowerCase() || '';
+          if (outcome !== 'not_answered' && outcome !== 'not answered') {
+            readyToAnalyze.push(call);
+          }
+        }
+      });
+
+      setAnalyzedCalls(analyzed);
+      setReadyToAnalyzeCalls(readyToAnalyze);
+    } catch (error) {
+      console.error('Error fetching analysis data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch analysis data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSidebarItem === 'analysis' && userRole) {
+      fetchAnalysisData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSidebarItem]);
+
   const fetchCompanySettings = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       const { data, error } = await supabase
         .from('company_settings')
         .select('*')
-        .eq('company_id', userRole.company_id)
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
@@ -483,17 +602,14 @@ export default function AdminDashboard() {
   };
 
   const updateCompanySettings = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       const { error } = await supabase
         .from('company_settings')
         .upsert({
-          company_id: userRole.company_id,
           caller_id: companySettings.caller_id,
           from_numbers: companySettings.from_numbers,
-        }, {
-          onConflict: 'company_id'
         });
 
       if (error) throw error;
@@ -553,7 +669,7 @@ export default function AdminDashboard() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       // Validate email uniqueness within the SAME role only
@@ -564,7 +680,6 @@ export default function AdminDashboard() {
         const { data: existingManagers } = await supabase
           .from('managers')
           .select('email, full_name')
-          .eq('company_id', userRole.company_id)
           .eq('email', emailToCheck)
           .eq('is_active', true);
 
@@ -581,7 +696,6 @@ export default function AdminDashboard() {
         const { data: existingEmployees } = await supabase
           .from('employees')
           .select('email, full_name')
-          .eq('company_id', userRole.company_id)
           .eq('email', emailToCheck)
           .eq('is_active', true);
 
@@ -610,7 +724,6 @@ export default function AdminDashboard() {
           .from('managers')
           .insert({
             user_id: demoUserId,
-            company_id: userRole.company_id,
             full_name: newUser.fullName,
             email: emailToCheck,
             department: finalDepartment,
@@ -637,7 +750,6 @@ export default function AdminDashboard() {
           .from('user_roles')
           .insert({
             user_id: demoUserId,
-            company_id: userRole.company_id,
             role: 'manager',
             manager_id: null,
             is_active: true,
@@ -651,7 +763,6 @@ export default function AdminDashboard() {
           .from('employees')
           .insert({
             user_id: demoUserId,
-            company_id: userRole.company_id,
             manager_id: newUser.managerId,
             full_name: newUser.fullName,
             email: newUser.email,
@@ -667,7 +778,6 @@ export default function AdminDashboard() {
           .from('user_roles')
           .insert({
             user_id: demoUserId,
-            company_id: userRole.company_id,
             role: 'employee',
             manager_id: newUser.managerId,
             is_active: true,
@@ -786,7 +896,7 @@ export default function AdminDashboard() {
           .from('user_roles')
           .delete()
           .eq('user_id', selectedUser.user_id)
-          .eq('company_id', userRole?.company_id);
+;
 
       } else {
         // Delete the employee record
@@ -802,7 +912,7 @@ export default function AdminDashboard() {
           .from('user_roles')
           .delete()
           .eq('user_id', selectedUser.user_id)
-          .eq('company_id', userRole?.company_id);
+;
       }
 
       toast({
@@ -869,14 +979,13 @@ export default function AdminDashboard() {
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       // Check if email already exists as EMPLOYEE only (same person can be both manager and employee)
       const { data: existingUsers, error: checkError } = await supabase
         .from('employees')
         .select('email, full_name')
-        .eq('company_id', userRole.company_id)
         .eq('email', newEmployee.email.toLowerCase().trim())
         .eq('is_active', true);
 
@@ -904,7 +1013,6 @@ export default function AdminDashboard() {
         .from('employees')
         .insert({
           user_id: demoUserId,
-          company_id: userRole.company_id,
           manager_id: newEmployee.managerId,
           full_name: newEmployee.fullName,
           email: newEmployee.email.toLowerCase().trim(),
@@ -931,7 +1039,6 @@ export default function AdminDashboard() {
         .from('user_roles')
         .insert({
           user_id: demoUserId,
-          company_id: userRole.company_id,
           role: 'employee',
           manager_id: newEmployee.managerId,
           is_active: true,
@@ -1049,7 +1156,7 @@ export default function AdminDashboard() {
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       // Determine user_id based on group or direct assignment
@@ -1105,7 +1212,6 @@ export default function AdminDashboard() {
           description: newLead.description || null,
           assigned_to: null, // Only employees should be in assigned_to
           user_id: assignedUserId, // Admin assigns to manager (via group or direct)
-          company_id: userRole.company_id,
           status: leadStatus,
           group_id: newLead.groupId || null, // Add group assignment
         });
@@ -1369,7 +1475,7 @@ export default function AdminDashboard() {
   };
 
   const handleCSVUpload = async () => {
-    if (!userRole?.company_id || csvLeads.length === 0) return;
+    if (csvLeads.length === 0) return;
 
     try {
       setIsUploadingCSV(true);
@@ -1384,7 +1490,6 @@ export default function AdminDashboard() {
           .insert({
             user_id: user?.id,
             group_name: csvNewGroupName.trim(),
-            company_id: userRole.company_id,
             assigned_to: csvAssignedTo === 'unassigned' ? null : managers.find(m => m.user_id === csvAssignedTo)?.id || null,
           })
           .select()
@@ -1433,7 +1538,6 @@ export default function AdminDashboard() {
         description: lead.description || null,
         assigned_to: null,
         user_id: assignedUserId,
-        company_id: userRole.company_id,
         status: leadStatus,
         group_id: groupIdToUse,
       }));
@@ -1505,21 +1609,26 @@ export default function AdminDashboard() {
   };
 
   const handleSaveCompany = async () => {
-    if (!userRole?.company_id) return;
+    if (!userRole) return;
 
     try {
       setIsUpdating(true);
 
+      // Update client data in clients table
       const { error } = await supabase
-        .from('companies')
+        .from('clients')
         .update({
           name: companyData.name,
           email: companyData.email,
-          industry: companyData.industry,
+          contact: companyData.contact,
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', userRole.company_id);
+        .eq('id', clientData?.id || '00000000-0000-0000-0000-000000000001');
 
       if (error) throw error;
+      
+      // Refresh client data
+      await fetchClientData();
 
       toast({
         title: 'Success',
@@ -1527,8 +1636,6 @@ export default function AdminDashboard() {
       });
 
       setIsEditingCompany(false);
-      // Refresh company data
-      window.location.reload(); // Simple refresh to get updated company data
     } catch (error: any) {
       console.error('Error updating company:', error);
       toast({
@@ -1637,7 +1744,7 @@ export default function AdminDashboard() {
                 <span className="text-blue-500">•</span>
                 <span className="flex items-center gap-1.5">
                   <Building className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="font-medium">{company?.name}</span>
+                  <span className="font-medium">Bricspac</span>
                 </span>
               </p>
             </div>
@@ -1716,6 +1823,14 @@ export default function AdminDashboard() {
             >
               <FileText className="h-4 w-4" />
               Reports
+            </Button>
+            <Button 
+              variant={activeSidebarItem === 'analysis' ? 'accent' : 'ghost'} 
+              className="w-full justify-start"
+              onClick={() => setActiveSidebarItem('analysis')}
+            >
+              <Brain className="h-4 w-4" />
+              Analysis
             </Button>
             <Button 
               variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'} 
@@ -3025,7 +3140,6 @@ export default function AdminDashboard() {
                 <p className="text-muted-foreground">View all calls made by your team members.</p>
               </div>
               <CallHistoryManager 
-                companyId={userRole?.company_id || ''} 
                 managerId={null} // null means show all calls for the company
               />
             </div>
@@ -3033,6 +3147,233 @@ export default function AdminDashboard() {
 
           {activeSidebarItem === 'reports' && (
             <AdminReportsPage />
+          )}
+
+          {activeSidebarItem === 'analysis' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Call Analysis</h2>
+                  <p className="text-muted-foreground">View analyzed calls and calls ready for analysis.</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={fetchAnalysisData}
+                  disabled={loadingAnalysis}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loadingAnalysis ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+
+              <Tabs value={analysisTab} onValueChange={(value) => setAnalysisTab(value as 'analyzed' | 'ready')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="analyzed">
+                    Analyzed Calls ({analyzedCalls.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="ready">
+                    Ready to Analyze ({readyToAnalyzeCalls.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="analyzed" className="space-y-4">
+                  {loadingAnalysis ? (
+                    <div className="flex items-center justify-center py-12">
+                      <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-muted-foreground">Loading analyzed calls...</span>
+                    </div>
+                  ) : analyzedCalls.length === 0 ? (
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center py-12">
+                        <Brain className="h-12 w-12 text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground">No analyzed calls found.</p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid gap-4">
+                      {analyzedCalls.map((call) => (
+                        <Card key={call.id}>
+                          <CardContent className="p-6">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h3 className="font-semibold text-lg">
+                                        {call.leads?.name || 'Unknown Lead'}
+                                      </h3>
+                                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Analyzed
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      {call.leads?.email} • {call.leads?.contact}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Employee:</span>
+                                    <p className="font-medium">{call.employees?.full_name || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Call Date:</span>
+                                    <p className="font-medium">
+                                      {call.created_at ? new Date(call.created_at).toLocaleDateString() : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Outcome:</span>
+                                    <p className="font-medium capitalize">{call.outcome || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Status:</span>
+                                    <p className="font-medium capitalize">{call.analysis?.status || 'N/A'}</p>
+                                  </div>
+                                </div>
+
+                                {call.analysis?.short_summary && (
+                                  <div className="mt-3 p-3 bg-muted rounded-lg">
+                                    <p className="text-sm font-medium mb-1">Summary:</p>
+                                    <p className="text-sm text-muted-foreground line-clamp-2">
+                                      {call.analysis.short_summary}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="flex gap-2 mt-4">
+                                  {call.exotel_recording_url && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => window.open(call.exotel_recording_url, '_blank')}
+                                    >
+                                      <PlayCircle className="h-4 w-4 mr-2" />
+                                      Play Recording
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigate(`/analysis/${call.analysis?.id || call.id}`)}
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    View Analysis
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="ready" className="space-y-4">
+                  {loadingAnalysis ? (
+                    <div className="flex items-center justify-center py-12">
+                      <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-muted-foreground">Loading calls ready to analyze...</span>
+                    </div>
+                  ) : readyToAnalyzeCalls.length === 0 ? (
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center py-12">
+                        <Clock className="h-12 w-12 text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground">No calls ready for analysis.</p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Calls with recording URLs will appear here once they're ready.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid gap-4">
+                      {readyToAnalyzeCalls.map((call) => (
+                        <Card key={call.id}>
+                          <CardContent className="p-6">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h3 className="font-semibold text-lg">
+                                        {call.leads?.name || 'Unknown Lead'}
+                                      </h3>
+                                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                        <Clock className="h-3 w-3 mr-1" />
+                                        Ready to Analyze
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      {call.leads?.email} • {call.leads?.contact}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Employee:</span>
+                                    <p className="font-medium">{call.employees?.full_name || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Call Date:</span>
+                                    <p className="font-medium">
+                                      {call.created_at ? new Date(call.created_at).toLocaleDateString() : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Outcome:</span>
+                                    <p className="font-medium capitalize">{call.outcome || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Duration:</span>
+                                    <p className="font-medium">
+                                      {call.exotel_duration ? `${Math.floor(call.exotel_duration / 60)}m ${call.exotel_duration % 60}s` : 'N/A'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {call.notes && (
+                                  <div className="mt-3 p-3 bg-muted rounded-lg">
+                                    <p className="text-sm font-medium mb-1">Notes:</p>
+                                    <p className="text-sm text-muted-foreground line-clamp-2">
+                                      {call.notes}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="flex gap-2 mt-4">
+                                  {call.exotel_recording_url && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => window.open(call.exotel_recording_url, '_blank')}
+                                    >
+                                      <PlayCircle className="h-4 w-4 mr-2" />
+                                      Play Recording
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigate(`/call-details/${call.id}`)}
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    View Details
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
           )}
 
           {activeSidebarItem === 'settings' && (
@@ -3194,7 +3535,7 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Company</Label>
-                      <p className="text-lg">{company?.name || 'Not provided'}</p>
+                      <p className="text-lg">{clientData?.name || companyData.name || 'Not provided'}</p>
                     </div>
                     {isEditingProfile && (
                       <div className="flex justify-end gap-2 pt-4">
@@ -3267,7 +3608,7 @@ export default function AdminDashboard() {
                           placeholder="Enter company name"
                         />
                       ) : (
-                        <p className="text-lg font-medium">{company?.name || 'Not provided'}</p>
+                        <p className="text-lg font-medium">{clientData?.name || companyData.name || 'Not provided'}</p>
                       )}
                     </div>
                     <div>
@@ -3280,24 +3621,24 @@ export default function AdminDashboard() {
                           placeholder="Enter company email"
                         />
                       ) : (
-                        <p className="text-lg">{company?.email || 'Not provided'}</p>
+                        <p className="text-lg">{clientData?.email || companyData.email || 'Not provided'}</p>
                       )}
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-muted-foreground">Industry</Label>
+                      <Label className="text-sm font-medium text-muted-foreground">Contact</Label>
                       {isEditingCompany ? (
                         <Input
-                          value={companyData.industry}
-                          onChange={(e) => setCompanyData(prev => ({ ...prev, industry: e.target.value }))}
-                          placeholder="Enter industry"
+                          value={companyData.contact}
+                          onChange={(e) => setCompanyData(prev => ({ ...prev, contact: e.target.value }))}
+                          placeholder="Enter contact number"
                         />
                       ) : (
-                        <p className="text-lg">{company?.industry || 'Not specified'}</p>
+                        <p className="text-lg">{clientData?.contact || companyData.contact || 'Not specified'}</p>
                       )}
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Created</Label>
-                      <p className="text-lg">{company?.created_at ? new Date(company.created_at).toLocaleDateString() : 'Not available'}</p>
+                      <p className="text-lg">{clientData?.created_at ? new Date(clientData.created_at).toLocaleDateString() : 'Not available'}</p>
                     </div>
                     {isEditingCompany && (
                       <div className="flex justify-end gap-2 pt-4">
@@ -4223,7 +4564,7 @@ export default function AdminDashboard() {
           </DialogHeader>
           <form onSubmit={async (e) => {
             e.preventDefault();
-            if (!userRole?.company_id) return;
+            if (!userRole) return;
 
             try {
               const { error } = await supabase
@@ -4231,7 +4572,6 @@ export default function AdminDashboard() {
                 .insert({
                   user_id: user?.id,
                   group_name: newLeadGroup.groupName,
-                  company_id: userRole.company_id,
                   assigned_to: newLeadGroup.assignedTo === "unassigned" ? null : newLeadGroup.assignedTo || null,
                 });
 
