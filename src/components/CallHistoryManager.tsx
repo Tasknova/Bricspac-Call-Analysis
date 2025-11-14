@@ -92,7 +92,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
 
-  const WEBHOOK_URL = "https://n8nautomation.site/webhook/b1df7b1a-d5df-4b49-b310-4a7e26d76417";
+  const WEBHOOK_URL = "https://n8nautomation.site/webhook/a49a4b7c-56cd-4ba4-8953-3328fceaa426";
 
   // Function to send webhook in background
   const sendWebhookInBackground = async (webhookPayload: any) => {

@@ -16,7 +16,7 @@ import EmployeeProfilePage from "@/components/EmployeeProfilePage";
 import EmployeeReportsPage from "@/components/EmployeeReportsPage";
 import PhoneDialer from "@/components/PhoneDialer";
 
-const WEBHOOK_URL = "https://n8nautomation.site/webhook/b1df7b1a-d5df-4b49-b310-4a7e26d76417";
+const WEBHOOK_URL = "https://n8nautomation.site/webhook/a49a4b7c-56cd-4ba4-8953-3328fceaa426";
 
 // Function to send webhook in background without blocking UI
 const sendWebhookInBackground = async (webhookPayload: any) => {

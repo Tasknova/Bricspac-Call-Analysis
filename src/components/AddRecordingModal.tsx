@@ -14,7 +14,7 @@ interface AddRecordingModalProps {
   onRecordingAdded?: () => void;
 }
 
-const WEBHOOK_URL = "https://n8nautomation.site/webhook/a2025371-8955-4ef4-8a74-0686456b3003";
+const WEBHOOK_URL = "https://n8nautomation.site/webhook/a49a4b7c-56cd-4ba4-8953-3328fceaa426";
 
 // Function to send webhook in background without blocking UI
 const sendWebhookInBackground = async (webhookPayload: any) => {
