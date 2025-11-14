@@ -42,7 +42,13 @@ import {
   UserCog,
   Building,
   AlertTriangle,
-  Calendar
+  Calendar,
+  Brain,
+  PlayCircle,
+  ExternalLink,
+  RefreshCw,
+  Clock,
+  CheckCircle
 } from "lucide-react";
 
 interface Employee {
@@ -145,12 +151,23 @@ export default function ManagerDashboard() {
     assignedTo: "",
     groupId: "",
   });
+  const [analysisTab, setAnalysisTab] = useState<'analyzed' | 'ready'>('analyzed');
+  const [analyzedCalls, setAnalyzedCalls] = useState<any[]>([]);
+  const [readyToAnalyzeCalls, setReadyToAnalyzeCalls] = useState<any[]>([]);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
   useEffect(() => {
     if (userRole) {
       fetchData();
     }
   }, [userRole]);
+
+  useEffect(() => {
+    if (selectedTab === 'analysis' && userRole) {
+      fetchAnalysisData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTab]);
 
   const fetchData = async () => {
     if (!userRole) return;
@@ -317,6 +334,104 @@ export default function ManagerDashboard() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAnalysisData = async () => {
+    if (!userRole || !manager) return;
+
+    try {
+      setLoadingAnalysis(true);
+
+      // Get employee user IDs under this manager
+      const employeeUserIds = employees.map(emp => emp.user_id);
+
+      if (employeeUserIds.length === 0) {
+        setAnalyzedCalls([]);
+        setReadyToAnalyzeCalls([]);
+        return;
+      }
+
+      // Fetch all calls with recording URLs from employees under this manager
+      const { data: allCalls, error: callsError } = await supabase
+        .from('call_history')
+        .select(`
+          *,
+          leads (
+            name,
+            email,
+            contact
+          ),
+          employees (
+            full_name,
+            email
+          )
+        `)
+        .in('employee_id', employeeUserIds)
+        .not('exotel_recording_url', 'is', null)
+        .order('created_at', { ascending: false });
+
+      if (callsError) {
+        console.error('Error fetching calls:', callsError);
+        setAnalyzedCalls([]);
+        setReadyToAnalyzeCalls([]);
+        return;
+      }
+
+      // Separate calls into analyzed and ready to analyze based on is_analyzed column
+      const analyzed: any[] = [];
+      const readyToAnalyze: any[] = [];
+
+      // Fetch analyses for analyzed calls to get analysis details
+      const analyzedCallIds = (allCalls || [])
+        .filter((call: any) => call.is_analyzed === true)
+        .map((call: any) => call.id);
+
+      let analysesMap = new Map();
+      if (analyzedCallIds.length > 0) {
+        const { data: analysesData, error: analysesError } = await supabase
+          .from('analyses')
+          .select('*')
+          .in('call_id', analyzedCallIds)
+          .order('created_at', { ascending: false });
+
+        if (!analysesError && analysesData) {
+          analysesData.forEach((analysis: any) => {
+            if (analysis.call_id) {
+              // Keep the most recent analysis for each call
+              if (!analysesMap.has(analysis.call_id)) {
+                analysesMap.set(analysis.call_id, analysis);
+              }
+            }
+          });
+        }
+      }
+
+      (allCalls || []).forEach((call: any) => {
+        if (call.is_analyzed === true) {
+          // Get the analysis for this call
+          const analysis = analysesMap.get(call.id);
+          analyzed.push({ ...call, analysis });
+        } else {
+          // Only include calls that are not "not_answered" in ready to analyze
+          const outcome = call.outcome?.toLowerCase() || '';
+          if (outcome !== 'not_answered' && outcome !== 'not answered') {
+            readyToAnalyze.push(call);
+          }
+        }
+      });
+
+      setAnalyzedCalls(analyzed);
+      setReadyToAnalyzeCalls(readyToAnalyze);
+    } catch (error) {
+      console.error('Error fetching analysis data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch analysis data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAnalysis(false);
     }
   };
 
@@ -816,6 +931,14 @@ export default function ManagerDashboard() {
             >
               <FileText className="h-4 w-4" />
               Reports
+            </Button>
+            <Button 
+              variant={selectedTab === "analysis" ? "accent" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedTab("analysis")}
+            >
+              <Brain className="h-4 w-4" />
+              Analysis
             </Button>
             <Button 
               variant={selectedTab === "profile" ? "accent" : "ghost"} 
@@ -1602,6 +1725,233 @@ export default function ManagerDashboard() {
 
             <TabsContent value="reports" className="space-y-6">
               <ManagerReportsPage />
+            </TabsContent>
+
+            <TabsContent value="analysis" className="space-y-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">Call Analysis</h2>
+                    <p className="text-muted-foreground">View analyzed calls and calls ready for analysis from your team.</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={fetchAnalysisData}
+                    disabled={loadingAnalysis}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingAnalysis ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+
+                <Tabs value={analysisTab} onValueChange={(value) => setAnalysisTab(value as 'analyzed' | 'ready')}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="analyzed">
+                      Analyzed Calls ({analyzedCalls.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="ready">
+                      Ready to Analyze ({readyToAnalyzeCalls.length})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="analyzed" className="space-y-4">
+                    {loadingAnalysis ? (
+                      <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-muted-foreground">Loading analyzed calls...</span>
+                      </div>
+                    ) : analyzedCalls.length === 0 ? (
+                      <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-12">
+                          <Brain className="h-12 w-12 text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No analyzed calls found.</p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="grid gap-4">
+                        {analyzedCalls.map((call) => (
+                          <Card key={call.id}>
+                            <CardContent className="p-6">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 space-y-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="font-semibold text-lg">
+                                          {call.leads?.name || 'Unknown Lead'}
+                                        </h3>
+                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                          <CheckCircle className="h-3 w-3 mr-1" />
+                                          Analyzed
+                                        </Badge>
+                                      </div>
+                                      <p className="text-sm text-muted-foreground">
+                                        {call.leads?.email} • {call.leads?.contact}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">Employee:</span>
+                                      <p className="font-medium">{call.employees?.full_name || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Call Date:</span>
+                                      <p className="font-medium">
+                                        {call.created_at ? new Date(call.created_at).toLocaleDateString() : 'N/A'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Outcome:</span>
+                                      <p className="font-medium capitalize">{call.outcome || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Status:</span>
+                                      <p className="font-medium capitalize">{call.analysis?.status || 'N/A'}</p>
+                                    </div>
+                                  </div>
+
+                                  {call.analysis?.short_summary && (
+                                    <div className="mt-3 p-3 bg-muted rounded-lg">
+                                      <p className="text-sm font-medium mb-1">Summary:</p>
+                                      <p className="text-sm text-muted-foreground line-clamp-2">
+                                        {call.analysis.short_summary}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="flex gap-2 mt-4">
+                                    {call.exotel_recording_url && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => window.open(call.exotel_recording_url, '_blank')}
+                                      >
+                                        <PlayCircle className="h-4 w-4 mr-2" />
+                                        Play Recording
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => window.location.href = `/analysis/${call.analysis?.id || call.id}`}
+                                    >
+                                      <ExternalLink className="h-4 w-4 mr-2" />
+                                      View Analysis
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="ready" className="space-y-4">
+                    {loadingAnalysis ? (
+                      <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-muted-foreground">Loading calls ready to analyze...</span>
+                      </div>
+                    ) : readyToAnalyzeCalls.length === 0 ? (
+                      <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-12">
+                          <Clock className="h-12 w-12 text-muted-foreground mb-4" />
+                          <p className="text-muted-foreground">No calls ready for analysis.</p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Calls with recording URLs will appear here once they're ready.
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="grid gap-4">
+                        {readyToAnalyzeCalls.map((call) => (
+                          <Card key={call.id}>
+                            <CardContent className="p-6">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 space-y-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h3 className="font-semibold text-lg">
+                                          {call.leads?.name || 'Unknown Lead'}
+                                        </h3>
+                                        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                          <Clock className="h-3 w-3 mr-1" />
+                                          Ready to Analyze
+                                        </Badge>
+                                      </div>
+                                      <p className="text-sm text-muted-foreground">
+                                        {call.leads?.email} • {call.leads?.contact}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">Employee:</span>
+                                      <p className="font-medium">{call.employees?.full_name || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Call Date:</span>
+                                      <p className="font-medium">
+                                        {call.created_at ? new Date(call.created_at).toLocaleDateString() : 'N/A'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Outcome:</span>
+                                      <p className="font-medium capitalize">{call.outcome || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Duration:</span>
+                                      <p className="font-medium">
+                                        {call.exotel_duration ? `${Math.floor(call.exotel_duration / 60)}m ${call.exotel_duration % 60}s` : 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {call.notes && (
+                                    <div className="mt-3 p-3 bg-muted rounded-lg">
+                                      <p className="text-sm font-medium mb-1">Notes:</p>
+                                      <p className="text-sm text-muted-foreground line-clamp-2">
+                                        {call.notes}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="flex gap-2 mt-4">
+                                    {call.exotel_recording_url && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => window.open(call.exotel_recording_url, '_blank')}
+                                      >
+                                        <PlayCircle className="h-4 w-4 mr-2" />
+                                        Play Recording
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => window.location.href = `/call-details/${call.id}`}
+                                    >
+                                      <ExternalLink className="h-4 w-4 mr-2" />
+                                      View Details
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </div>
             </TabsContent>
 
             <TabsContent value="profile" className="space-y-6">

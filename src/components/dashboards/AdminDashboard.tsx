@@ -59,7 +59,8 @@ import {
   UserCog,
   Brain,
   PlayCircle,
-  ExternalLink
+  ExternalLink,
+  Plug
 } from "lucide-react";
 
 interface User {
@@ -175,6 +176,18 @@ export default function AdminDashboard() {
     new_password: '',
     confirm_password: '',
   });
+  const [isEditingIntegrations, setIsEditingIntegrations] = useState(false);
+  const [exotelCredentials, setExotelCredentials] = useState({
+    exotel_api_key: '',
+    exotel_api_token: '',
+    exotel_subdomain: 'api.exotel.com',
+    exotel_account_sid: '',
+  });
+  const [showCredentials, setShowCredentials] = useState({
+    api_key: false,
+    api_token: false,
+    account_sid: false,
+  });
   
   const [newUser, setNewUser] = useState({
     email: "",
@@ -254,6 +267,13 @@ export default function AdminDashboard() {
           name: data.name || '',
           email: data.email || '',
           contact: data.contact || '',
+        });
+        // Set Exotel credentials
+        setExotelCredentials({
+          exotel_api_key: data.exotel_api_key || '',
+          exotel_api_token: data.exotel_api_token || '',
+          exotel_subdomain: data.exotel_subdomain || 'api.exotel.com',
+          exotel_account_sid: data.exotel_account_sid || '',
         });
       }
     } catch (error) {
@@ -1641,6 +1661,47 @@ export default function AdminDashboard() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to update company information. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveIntegrations = async () => {
+    if (!userRole || !clientData) return;
+
+    try {
+      setIsUpdating(true);
+
+      // Update Exotel credentials in clients table
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          exotel_api_key: exotelCredentials.exotel_api_key,
+          exotel_api_token: exotelCredentials.exotel_api_token,
+          exotel_subdomain: exotelCredentials.exotel_subdomain,
+          exotel_account_sid: exotelCredentials.exotel_account_sid,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', clientData.id);
+
+      if (error) throw error;
+      
+      // Refresh client data
+      await fetchClientData();
+
+      toast({
+        title: 'Success',
+        description: 'Exotel credentials updated successfully!',
+      });
+
+      setIsEditingIntegrations(false);
+    } catch (error: any) {
+      console.error('Error updating Exotel credentials:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update Exotel credentials. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -3776,6 +3837,228 @@ export default function AdminDashboard() {
                     </div>
                   </CardContent>
                 )}
+              </Card>
+
+              {/* Integrations */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plug className="h-5 w-5" />
+                      Integrations
+                    </CardTitle>
+                    <CardDescription>
+                      Manage your Exotel API credentials
+                    </CardDescription>
+                  </div>
+                  {!isEditingIntegrations ? (
+                    <Button onClick={() => setIsEditingIntegrations(true)} size="sm" variant="outline">
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit Credentials
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button onClick={handleSaveIntegrations} size="sm" disabled={isUpdating}>
+                        {isUpdating ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Save
+                          </>
+                        )}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setIsEditingIntegrations(false);
+                          // Reset to original values
+                          if (clientData) {
+                            setExotelCredentials({
+                              exotel_api_key: clientData.exotel_api_key || '',
+                              exotel_api_token: clientData.exotel_api_token || '',
+                              exotel_subdomain: clientData.exotel_subdomain || 'api.exotel.com',
+                              exotel_account_sid: clientData.exotel_account_sid || '',
+                            });
+                          }
+                        }} 
+                        size="sm"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="exotel_api_key">Exotel API Key</Label>
+                    {isEditingIntegrations ? (
+                      <Input
+                        id="exotel_api_key"
+                        type="text"
+                        value={exotelCredentials.exotel_api_key}
+                        onChange={(e) => setExotelCredentials(prev => ({ ...prev, exotel_api_key: e.target.value }))}
+                        placeholder="Enter Exotel API Key"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-mono text-muted-foreground flex-1">
+                          {exotelCredentials.exotel_api_key 
+                            ? (showCredentials.api_key 
+                                ? exotelCredentials.exotel_api_key 
+                                : '•'.repeat(Math.min(exotelCredentials.exotel_api_key.length, 40)))
+                            : 'Not configured'}
+                        </p>
+                        {exotelCredentials.exotel_api_key && (
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setShowCredentials(prev => ({ ...prev, api_key: !prev.api_key }))}
+                            >
+                              {showCredentials.api_key ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(exotelCredentials.exotel_api_key);
+                                toast({
+                                  title: 'Copied',
+                                  description: 'API Key copied to clipboard',
+                                });
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="exotel_api_token">Exotel API Token</Label>
+                    {isEditingIntegrations ? (
+                      <Input
+                        id="exotel_api_token"
+                        type="text"
+                        value={exotelCredentials.exotel_api_token}
+                        onChange={(e) => setExotelCredentials(prev => ({ ...prev, exotel_api_token: e.target.value }))}
+                        placeholder="Enter Exotel API Token"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-mono text-muted-foreground flex-1">
+                          {exotelCredentials.exotel_api_token 
+                            ? (showCredentials.api_token 
+                                ? exotelCredentials.exotel_api_token 
+                                : '•'.repeat(Math.min(exotelCredentials.exotel_api_token.length, 40)))
+                            : 'Not configured'}
+                        </p>
+                        {exotelCredentials.exotel_api_token && (
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setShowCredentials(prev => ({ ...prev, api_token: !prev.api_token }))}
+                            >
+                              {showCredentials.api_token ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(exotelCredentials.exotel_api_token);
+                                toast({
+                                  title: 'Copied',
+                                  description: 'API Token copied to clipboard',
+                                });
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="exotel_subdomain">Exotel Subdomain</Label>
+                    {isEditingIntegrations ? (
+                      <Input
+                        id="exotel_subdomain"
+                        type="text"
+                        value={exotelCredentials.exotel_subdomain}
+                        onChange={(e) => setExotelCredentials(prev => ({ ...prev, exotel_subdomain: e.target.value }))}
+                        placeholder="Enter Exotel Subdomain"
+                      />
+                    ) : (
+                      <p className="text-lg">{exotelCredentials.exotel_subdomain || 'Not configured'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="exotel_account_sid">Exotel Account SID</Label>
+                    {isEditingIntegrations ? (
+                      <Input
+                        id="exotel_account_sid"
+                        type="text"
+                        value={exotelCredentials.exotel_account_sid}
+                        onChange={(e) => setExotelCredentials(prev => ({ ...prev, exotel_account_sid: e.target.value }))}
+                        placeholder="Enter Exotel Account SID"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-mono text-muted-foreground flex-1">
+                          {exotelCredentials.exotel_account_sid 
+                            ? (showCredentials.account_sid 
+                                ? exotelCredentials.exotel_account_sid 
+                                : '•'.repeat(Math.min(exotelCredentials.exotel_account_sid.length, 20)))
+                            : 'Not configured'}
+                        </p>
+                        {exotelCredentials.exotel_account_sid && (
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setShowCredentials(prev => ({ ...prev, account_sid: !prev.account_sid }))}
+                            >
+                              {showCredentials.account_sid ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(exotelCredentials.exotel_account_sid);
+                                toast({
+                                  title: 'Copied',
+                                  description: 'Account SID copied to clipboard',
+                                });
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
               </Card>
             </div>
           )}
